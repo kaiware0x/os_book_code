@@ -24,8 +24,8 @@ registers = {
     'R8':  0,
     'R9':  0,
     'TP':  0,
-    'SP':  0xFFFFF,
-    'PC':  0x00000,
+    'SP':  0xFF000,
+    'PC':  0x80000,
     'PT':  0x00000,
     'VT':  0x00000,
     'CR':  0x00000000,
@@ -642,11 +642,11 @@ if __name__ == '__main__':
 
     # プログラムをロード
     try:
-        with open(sys.argv[1], "rb") as file:
+        with open("os.bin", "rb") as file:
             prog = file.read()
             memory[0:len(prog)] = prog
     except:
-        print("プログラムを読み込めませんでした。")
+        vc_write("OSを読み込めませんでした。\n")
         sys.exit()
 
     try:
