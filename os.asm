@@ -1,4 +1,9 @@
     .addr   0x80000
+    syscall 10 ; UNIX時刻をr8レジスタにセット
+    stdi    r8, [basetime]
+    movi    tp, 0
+    movi    vt, vector_table
+    ei
     movi    r8, start_message
     syscall 1
 
@@ -83,6 +88,10 @@ do_enter:
     movi    r9, cmd_exec
     calli   cmp_str
     jpzi    do_exec
+    ; date
+    movi    r9, cmd_date
+    calli   cmp_str
+    jpzi    do_date
     ;
     movi    r8, cmd_error1
     syscall 1
@@ -110,6 +119,12 @@ do_exec:
     jpi     cmdloop
 
 halt ; これより先はデータ領域など
+
+; Handler
+int_timer: ; interrpted timer event
+    inc     tp
+int_other:
+    iret
 
 ; DATA
 start_message:
@@ -230,3 +245,11 @@ keybuffer:
     .addr   0xc1000
 tokenbuffer:
     .byte   0
+
+; Vector Table
+    .addr   0xff800
+vector_table:
+    .dword  int_timer
+    .dword  int_other
+    .dword  int_other
+    .dword  int_other
