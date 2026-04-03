@@ -63,7 +63,10 @@ do_enter:
     ;
     movi    r2, 0
     stb     r2, [r1]
-    movi    r8, keybuffer
+    ;
+    movi    r8, 1
+    movi    r9, keybuffer
+    calli   get_nth_token
     ; exit
     movi    r9, cmd_exit
     calli   cmp_str ; strcmp(r8, r9)
@@ -76,6 +79,10 @@ do_enter:
     movi    r9, cmd_ls
     calli   cmp_str
     jpzi    do_ls
+    ; exec
+    movi    r9, cmd_exec
+    calli   cmp_str
+    jpzi    do_exec
     ;
     movi    r8, cmd_error1
     syscall 1
@@ -95,6 +102,12 @@ do_reg:
 do_ls:
     syscall 21 ; show ./dir
     jpi     cmdloop
+do_exec:
+    movi    r8, 2 ; token 2つ分
+    movi    r9, keybuffer ; 対象文字列
+    calli   get_nth_token
+    syscall 22 ; dirフォルダ内のバイナリを実行
+    jpi     cmdloop
 
 halt ; これより先はデータ領域など
 
@@ -109,6 +122,8 @@ cmd_exit:
     .string "exit"
 cmd_ls:
     .string "ls"
+cmd_exec:
+    .string "exec"
 cmd_error1:
     .string "Command "
 cmd_error2:
@@ -145,8 +160,73 @@ _cmp_str_end:
     pop     r0
     ret
 
+    .addr   0xb1000
+get_nth_token:
+    push    r0
+    push    r1
+    push    r2
+    push    r3
+    mov     r0, r9 ; 入力文字列先頭ポインタをr0に格納
+    movi    r1, 0
+    movi    r2, 0
+_get_token_addr:
+_outer_loop:
+    dec     r8 ; チェックするトークン数 (SPACE区切り)
+    jpui    _outer_loop_end
+_inner_loop:
+    ldb     r3, [r0] ; r3 = *(r0)
+    sbti    r3, 9 ; is SPACE?
+    jpzi    _do_space
+    sbti    r3, 32 ; is SPACE?
+    jpzi    _do_space
+    sbti    r3, 0
+    jpzi    _null_return
+    sbti    r2, 0
+    jpnzi   _inner_loop_next ; r2 != 0 なら次へ
+    not     r2
+    mov     r1, r0
+    jpi     _inner_loop_end
+_do_space:
+    sbti    r2, 0
+    jpzi    _inner_loop_next
+    not     r2
+_inner_loop_next:
+    inc     r0
+    jpi     _inner_loop
+_inner_loop_end:
+    jpi     _outer_loop
+_outer_loop_end:
+    movi    r0, tokenbuffer
+_copy_token:
+    ldb     r2, [r1] ; r2 = *r1
+    stb     r2, [r0] ; *r0 = r2
+    sbti    r2, 9
+    jpzi    _cut_token
+    sbti    r2, 32
+    jpzi    _cut_token
+    sbti    r2, 0
+    jpzi    _get_nth_token_end
+    inc     r0
+    inc     r1
+    jpi     _copy_token
+_null_return:
+    movi    r0, tokenbuffer
+_cut_token:
+    movi    r2, 0
+    stb     r2, [r0]
+_get_nth_token_end:
+    pop     r3
+    pop     r2
+    pop     r1
+    pop     r0
+    movi    r8, tokenbuffer
+    ret
+
 ; Buffer
     .addr   0xc0000
-
 keybuffer:
+    .byte   0
+
+    .addr   0xc1000
+tokenbuffer:
     .byte   0
