@@ -117,6 +117,10 @@ do_exec:
     calli   get_nth_token
     syscall 22 ; dirフォルダ内のバイナリを実行
     jpi     cmdloop
+do_date:
+    lddi    r8, [basetime] ; r8にOS起動時点のUNIXタイムをセット
+    syscall 11 ; 現在時刻を 2026-04-03 21:45:36 のように表示
+    jpi     cmdloop
 
 halt ; これより先はデータ領域など
 
@@ -139,6 +143,10 @@ cmd_ls:
     .string "ls"
 cmd_exec:
     .string "exec"
+cmd_date:
+    .string "date"
+basetime:
+    .dword  0
 cmd_error1:
     .string "Command "
 cmd_error2:
