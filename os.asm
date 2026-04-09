@@ -30,7 +30,7 @@
     movi    sp, t0_stack_btm
     stdi    sp, [_t0_sp]
     movi    r0, 0
-    sbti    r0, [current_task]
+    stbi    r0, [current_task]
     jpi     os_start
 idle_loop:
     jpi     idle_loop
@@ -191,7 +191,7 @@ _task_switch:
     push    vt
 
     ldbi    r0, [current_task]
-    stbi    r0, 4
+    sbti    r0, 4
     jpzi    _c4
 _c0:
     ldbi    r0, [_t0_status]
