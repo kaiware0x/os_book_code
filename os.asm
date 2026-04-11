@@ -1,9 +1,79 @@
     .def    runnable        0
     .def    waiting         1
+    .def    timeslice       50 ; 0.1s x 50 で最大5s実行可能
     .def    t0_stack_btm    0xff000
+    .def    t1_stack_btm    0xf0000
+    .def    t2_stack_btm    0xe8000
+    .def    t3_stack_btm    0xe0000
     .def    t4_stack_btm    0xd8000
 
     .addr   0x80000
+; Task1 setup
+    movi    sp, t1_stack_btm
+    movi    r0, print_t1_message
+    push    r0 ; pc
+    movi    r0, 0x4000
+    muli    r0, 0x10000
+    push    r0 ; cr
+    movi    r0, 0 ; dummy data
+    push    r0 ; r0
+    push    r0 ; r1
+    push    r0 ; r2
+    push    r0 ; r3
+    push    r0 ; r4
+    push    r0 ; r5
+    push    r0 ; r6
+    push    r0 ; r7
+    push    r0 ; r8
+    push    r0 ; r9
+    push    r0 ; pt
+    movi    r0, vector_table
+    push    r0 ; vt
+    stdi    sp, [_t1_sp]
+; Task2 setup
+    movi    sp, t2_stack_btm
+    movi    r0, print_t2_message
+    push    r0 ; pc
+    movi    r0, 0x4000
+    muli    r0, 0x10000
+    push    r0 ; cr
+    movi    r0, 0 ; dummy data
+    push    r0 ; r0
+    push    r0 ; r1
+    push    r0 ; r2
+    push    r0 ; r3
+    push    r0 ; r4
+    push    r0 ; r5
+    push    r0 ; r6
+    push    r0 ; r7
+    push    r0 ; r8
+    push    r0 ; r9
+    push    r0 ; pt
+    movi    r0, vector_table
+    push    r0 ; vt
+    stdi    sp, [_t2_sp]
+; Task3 setup
+    movi    sp, t3_stack_btm
+    movi    r0, print_t3_message
+    push    r0 ; pc
+    movi    r0, 0x4000
+    muli    r0, 0x10000
+    push    r0 ; cr
+    movi    r0, 0 ; dummy data
+    push    r0 ; r0
+    push    r0 ; r1
+    push    r0 ; r2
+    push    r0 ; r3
+    push    r0 ; r4
+    push    r0 ; r5
+    push    r0 ; r6
+    push    r0 ; r7
+    push    r0 ; r8
+    push    r0 ; r9
+    push    r0 ; pt
+    movi    r0, vector_table
+    push    r0 ; vt
+    stdi    sp, [_t3_sp]
 ; Task4 setup
     movi    sp, t4_stack_btm
     movi    r0, idle_loop
@@ -34,6 +104,38 @@
     jpi     os_start
 idle_loop:
     jpi     idle_loop
+
+print_t1_message:
+    movi    r8, t1_message
+    syscall 1
+    movi    r8, waiting
+    stbi    r8, [_t1_status]
+_t1_loop:
+    jpi     _t1_loop
+
+print_t2_message:
+    movi    r8, t2_message
+    syscall 1
+    movi    r8, waiting
+    stbi    r8, [_t2_status]
+_t2_loop:
+    jpi     _t2_loop
+
+print_t3_message:
+    movi    r8, t3_message
+    syscall 1
+    movi    r8, waiting
+    stbi    r8, [_t3_status]
+_t3_loop:
+    jpi     _t3_loop
+
+t1_message:
+    .string "This message was displayed by Task 1.\n"
+t2_message:
+    .string "This message was displayed by Task 2.\n"
+t3_message:
+    .string "This message was displayed by Task 3.\n"
+
 os_start:
     syscall 10 ; UNIX時刻をr8レジスタにセット
     stdi    r8, [basetime]
@@ -176,6 +278,29 @@ _sleep_proc:
     stbi    r0, [_t0_status]
 _sleep_proc_end:
     pop     r0
+_timeslice_proc:
+    push    r0
+    push    r1
+    lddi    r0, [basetick]
+    sbti    r0, 0
+    jpnzi   _check_timeslice
+    mov     r0, tp
+    stdi    r0, [basetick]
+_check_timeslice:
+    mov     r1, tp
+    sub     r1, r0
+    sbti    r1, timeslice
+    jpui    _no_task_switch
+    movi    r0, 0
+    stdi    r0, [basetick]
+    pop     r1
+    pop     r0
+    jpi     _task_switch
+_no_task_switch:
+    pop     r1
+    pop     r0
+    iret
+
 _task_switch:
     push    r0
     push    r1
@@ -190,30 +315,39 @@ _task_switch:
     push    pt
     push    vt
 
+_save_sp:
     ldbi    r0, [current_task]
-    sbti    r0, 4
-    jpzi    _c4
-_c0:
-    ldbi    r0, [_t0_status]
-    sbti    r0, runnable
-    jpzi    _int_timer_end
-    jpi     _switch_t4
-_c4:
-    ldbi    r0, [_t0_status]
-    sbti    r0, runnable
-    jpzi    _switch_t0
-    jpi     _int_timer_end
-_switch_t0:
-    movi    r0, 0
-    stbi    r0, [current_task]
-    stdi    sp, [_t4_sp]
-    lddi    sp, [_t0_sp]
-    jpi     _int_timer_end
-_switch_t4:
+    mov     r1, r0
+    muli    r1, 4
+    addi    r1, task_stack_pointer
+    std     sp, [r1]
+
+    movi    r2, 0
+    inc     r0
+    modi    r0, 4
+_find_loop:
+    movi    r1, task_status
+    add     r1, r0
+    ldb     r3, [r1]
+    sbti    r3, runnable
+    jpzi    _select_next
+    inc     r2
+    sbti    r2, 4
+    jpui    _another_cand
     movi    r0, 4
+    jpi     _select_next
+_another_cand:
+    inc     r0
+    modi    r0, 4
+    jpi     _find_loop
+_select_next:
     stbi    r0, [current_task]
-    stdi    sp, [_t0_sp]
-    lddi    sp, [_t4_sp]
+    mov     r8, r0
+    syscall 30
+    muli    r0, 4
+    addi    r0, task_stack_pointer
+    ldd     sp, [r0]
+
 _int_timer_end:
     pop     vt
     pop     pt
