@@ -110,24 +110,22 @@ print_t1_message:
     syscall 1
     movi    r8, waiting
     stbi    r8, [_t1_status]
-_t1_loop:
-    jpi     _t1_loop
-
+    di
+    jpi     _task_switch
 print_t2_message:
     movi    r8, t2_message
     syscall 1
     movi    r8, waiting
     stbi    r8, [_t2_status]
-_t2_loop:
-    jpi     _t2_loop
-
+    di
+    jpi     _task_switch
 print_t3_message:
     movi    r8, t3_message
     syscall 1
     movi    r8, waiting
     stbi    r8, [_t3_status]
-_t3_loop:
-    jpi     _t3_loop
+    di
+    jpi     _task_switch
 
 t1_message:
     .string "This message was displayed by Task 1.\n"
@@ -265,16 +263,20 @@ halt ; これより先はデータ領域など
 ; Handler
 int_timer: ; interrpted timer event
     inc     tp
+    ; Tick の計算と Status の変更
 _sleep_proc:
     push    r0 ; Stackに退避
-    ldwi    r0, [_t0_sleep_ticks] ; r0=t0の残り時間
-    sbti    r0, 0 ; 残り時間が0なら…
-    jpzi    _sleep_proc_end ; endに飛ぶ
+    ; t0の残り時間が0ならendにJump
+    ldwi    r0, [_t0_sleep_ticks]
+    sbti    r0, 0
+    jpzi    _sleep_proc_end
+    ; Sleep継続か、Runnableへ変更か
     dec     r0 ; 残り時間を1tick減らす
     stwi    r0, [_t0_sleep_ticks]
     sbti    r0, 0
     jpnzi   _sleep_proc_end ; 残り時間が0でないならendへ
-    movi    r0, runnable ; 残り時間0ならrunnableへ
+    ; 残り時間0ならrunnableへ
+    movi    r0, runnable
     stbi    r0, [_t0_status]
 _sleep_proc_end:
     pop     r0 ; stackから復帰
@@ -282,16 +284,20 @@ _sleep_proc_end:
 _timeslice_proc:
     push    r0
     push    r1
+    ; basetick が0でないなら _check_timeslice へ jump
     lddi    r0, [basetick]
     sbti    r0, 0
     jpnzi   _check_timeslice
-    mov     r0, tp
+    ; basetick が0(初期値)なら tp のデータを basetick へ保存
+    mov     r0, tp ; r0 = tp
     stdi    r0, [basetick]
 _check_timeslice:
-    mov     r1, tp
-    sub     r1, r0
+    mov     r1, tp ; r1 = tp
+    sub     r1, r0 ; r1 -= r0
+    ; r1 - timeslice < 0 なら _no_task_switch へJump
     sbti    r1, timeslice
     jpui    _no_task_switch
+    ; basetick を0にして _task_switch へ
     movi    r0, 0
     stdi    r0, [basetick]
     pop     r1
@@ -317,21 +323,24 @@ _task_switch:
     push    vt
 
 _save_sp:
+    ; Task毎のSPアドレスを計算する
+    ; r1 = 4 * r0 + sp
     ldbi    r0, [current_task]
     mov     r1, r0
     muli    r1, 4
     addi    r1, task_stack_pointer
-    std     sp, [r1]
-
-    movi    r2, 0
-    inc     r0
-    modi    r0, 4
+    std     sp, [r1] ; 現在の SP の値を計算したアドレスへ書き込み
+; _find_loop の準備
+    movi    r2, 0 ; Loop Counter の用意
+    inc     r0 ; Task番号r0をincし次のタスクへ
+    modi    r0, 4 ; r0を0~3に収める
 _find_loop:
-    movi    r1, task_status
-    add     r1, r0
-    ldb     r3, [r1]
-    sbti    r3, runnable
+    movi    r1, task_status ; r1 = task_status 配列の先頭ポインタ
+    add     r1, r0 ; r1 += r0 (タスク番号分ポインタをずらす)
+    ldb     r3, [r1] ; ポインタから Load Byte して r3 へ
+    sbti    r3, runnable ; Status が Runnable か
     jpzi    _select_next
+    ; Task0~3 全てがWaitingだったら Task4 へ
     inc     r2
     sbti    r2, 4
     jpui    _another_cand
@@ -340,11 +349,14 @@ _find_loop:
 _another_cand:
     inc     r0
     modi    r0, 4
-    jpi     _find_loop
+    jpi     _find_loop ; Loop 続行
+
 _select_next:
-    stbi    r0, [current_task]
-    mov     r8, r0
+    stbi    r0, [current_task] ; r0 -> *current_task
+    mov     r8, r0 ; r8 <- r0
     syscall 30
+    ; Task毎のSPを計算して格納
+    ; sp = r0 * 4 + task_stack_pointer
     muli    r0, 4
     addi    r0, task_stack_pointer
     ldd     sp, [r0]
@@ -380,22 +392,29 @@ cmd_exec:
     .string "exec"
 cmd_date:
     .string "date"
-basetime:
-    .dword  0
 cmd_error1:
     .string "Command "
 cmd_error2:
     .string " not found.\n"
 end_message:
     .string "bye.\n\n"
-
+basetime:
+    .dword  0
+basetick:
+    .dword  0
 
 ; Task DATA
 current_task:
-    .byte   0
+    .byte   0 ; 0~4?
 
 task_status:
 _t0_status:
+    .byte   runnable
+_t1_status:
+    .byte   runnable
+_t2_status:
+    .byte   runnable
+_t3_status:
     .byte   runnable
 _t4_status:
     .byte   waiting
@@ -403,11 +422,23 @@ _t4_status:
 task_sleep_ticks:
 _t0_sleep_ticks:
     .word   0
+_t1_sleep_ticks:
+    .word   0
+_t2_sleep_ticks:
+    .word   0
+_t3_sleep_ticks:
+    .word   0
 _t4_sleep_ticks:
     .word   0
 
 task_stack_pointer:
 _t0_sp:
+    .dword  0
+_t1_sp:
+    .dword  0
+_t2_sp:
+    .dword  0
+_t3_sp:
     .dword  0
 _t4_sp:
     .dword  0
@@ -505,10 +536,20 @@ _get_nth_token_end:
 
     .addr   0xb2000
 sleep:
+    push    r0
+    push    r1
+    ldbi    r0, [current_task]
+    mov     r1, r0
+    ; task_sleep_ticks は 2Byte 配列なのでOffsetを2倍する
+    muli    r1, 2
+    addi    r1, task_sleep_ticks
     muli    r8, 10
-    stwi    r8, [_t0_sleep_ticks]
-    movi    r8, waiting
-    stbi    r8, [_t0_status]
+    stw     r8, [r1]
+    addi    r0, task_status
+    movi    r9, waiting
+    stb     r8, [r0]
+    pop     r1
+    pop     r0
     movi    r8, _sleep_end
     push    r8 ; pc
     push    cr
