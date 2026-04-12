@@ -266,18 +266,19 @@ halt ; これより先はデータ領域など
 int_timer: ; interrpted timer event
     inc     tp
 _sleep_proc:
-    push    r0
-    ldwi    r0, [_t0_sleep_ticks]
-    sbti    r0, 0
-    jpzi    _sleep_proc_end
-    dec     r0
+    push    r0 ; Stackに退避
+    ldwi    r0, [_t0_sleep_ticks] ; r0=t0の残り時間
+    sbti    r0, 0 ; 残り時間が0なら…
+    jpzi    _sleep_proc_end ; endに飛ぶ
+    dec     r0 ; 残り時間を1tick減らす
     stwi    r0, [_t0_sleep_ticks]
     sbti    r0, 0
-    jpnzi   _sleep_proc_end
-    movi    r0, runnable
+    jpnzi   _sleep_proc_end ; 残り時間が0でないならendへ
+    movi    r0, runnable ; 残り時間0ならrunnableへ
     stbi    r0, [_t0_status]
 _sleep_proc_end:
-    pop     r0
+    pop     r0 ; stackから復帰
+
 _timeslice_proc:
     push    r0
     push    r1
