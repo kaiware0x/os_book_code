@@ -106,33 +106,29 @@ idle_loop:
     jpi     idle_loop
 
 print_t1_message:
-    movi    r8, t1_message
-    syscall 1
-    movi    r8, waiting
-    stbi    r8, [_t1_status]
-    di
-    jpi     _task_switch
+    ; print 'A'
+    movi    r8, 0x41
+    syscall 0
+    ; 5秒Sleepして自己ループ
+    movi    r8, 5
+    calli   sleep
+    jpi     print_t1_message
 print_t2_message:
-    movi    r8, t2_message
-    syscall 1
-    movi    r8, waiting
-    stbi    r8, [_t2_status]
-    di
-    jpi     _task_switch
+    ; print 'B'
+    movi    r8, 0x42
+    syscall 0
+    ; 10秒Sleepして自己ループ
+    movi    r8, 10
+    calli   sleep
+    jpi     print_t2_message
 print_t3_message:
-    movi    r8, t3_message
-    syscall 1
-    movi    r8, waiting
-    stbi    r8, [_t3_status]
-    di
-    jpi     _task_switch
-
-t1_message:
-    .string "This message was displayed by Task 1.\n"
-t2_message:
-    .string "This message was displayed by Task 2.\n"
-t3_message:
-    .string "This message was displayed by Task 3.\n"
+    ; print 'C'
+    movi    r8, 0x43
+    syscall 0
+    ; 20秒Sleepして自己ループ
+    movi    r8, 20
+    calli   sleep
+    jpi     print_t3_message
 
 os_start:
     syscall 10 ; UNIX時刻をr8レジスタにセット
@@ -266,20 +262,40 @@ int_timer: ; interrpted timer event
     ; Tick の計算と Status の変更
 _sleep_proc:
     push    r0 ; Stackに退避
-    ; t0の残り時間が0ならendにJump
-    ldwi    r0, [_t0_sleep_ticks]
+    push    r1
+    push    r2
+    push    r3
+    ; Loop に使う変数の用意
+    movi    r1, task_sleep_ticks
+    movi    r2, task_status
+    movi    r3, 0 ; Loop Counter
+_sleep_proc_loop:
+    ; 残りtickが0なら次のタスクへ
+    ldw     r0, [r1] ; r0 <- *r1
     sbti    r0, 0
-    jpzi    _sleep_proc_end
-    ; Sleep継続か、Runnableへ変更か
-    dec     r0 ; 残り時間を1tick減らす
-    stwi    r0, [_t0_sleep_ticks]
+    jpzi    _next_task
+
+    dec     r0
+    stw     r0, [r1] ; r0 -> *r1
     sbti    r0, 0
-    jpnzi   _sleep_proc_end ; 残り時間が0でないならendへ
-    ; 残り時間0ならrunnableへ
+    jpnzi   _next_task
+
     movi    r0, runnable
-    stbi    r0, [_t0_status]
+    stb     r0, [r2] ; runnable -> *r2
+_next_task:
+    inc     r3
+    ; 4回LoopしたらEnd
+    sbti    r3, 4
+    jpzi    _sleep_proc_end
+
+    addi    r1, 2 ; task_sleep_ticksはWordなので2Byte足す
+    inc     r2
+    jpi     _sleep_proc_loop
 _sleep_proc_end:
-    pop     r0 ; stackから復帰
+    pop     r3
+    pop     r2
+    pop     r1
+    pop     r0
 
 _timeslice_proc:
     push    r0
@@ -538,20 +554,22 @@ _get_nth_token_end:
 sleep:
     push    r0
     push    r1
-    ldbi    r0, [current_task]
+
+    ldbi    r0, [current_task] ; ro <- *current_task
     mov     r1, r0
     ; task_sleep_ticks は 2Byte 配列なのでOffsetを2倍する
     muli    r1, 2
     addi    r1, task_sleep_ticks
-    muli    r8, 10
-    stw     r8, [r1]
-    addi    r0, task_status
-    movi    r9, waiting
-    stb     r8, [r0]
+    muli    r8, 10 ; r8は引数s. 10倍してs->tickへ単位変換
+    stw     r8, [r1] ; r8 -> *r1
+    addi    r0, task_status ; r0 <- task_status[current_task]
+    movi    r8, waiting
+    stb     r8, [r0] ; waiting -> task_status[current_task]
+
     pop     r1
     pop     r0
     movi    r8, _sleep_end
-    push    r8 ; pc
+    push    r8 ; pc <- _sleep_end
     push    cr
     di
     jpi     _task_switch
