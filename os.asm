@@ -6,6 +6,7 @@
     .def    t2_stack_btm    0xe8000
     .def    t3_stack_btm    0xe0000
     .def    t4_stack_btm    0xd8000
+    .def    t0_pt           0xfff00 ; Task0用 PageTable アドレス
 
     .addr   0x80000
 ; Task1 setup
@@ -105,37 +106,15 @@
 idle_loop:
     jpi     idle_loop
 
-print_t1_message:
-    ; print 'A'
-    movi    r8, 0x41
-    syscall 0
-    ; 5秒Sleepして自己ループ
-    movi    r8, 5
-    calli   sleep
-    jpi     print_t1_message
-print_t2_message:
-    ; print 'B'
-    movi    r8, 0x42
-    syscall 0
-    ; 10秒Sleepして自己ループ
-    movi    r8, 10
-    calli   sleep
-    jpi     print_t2_message
-print_t3_message:
-    ; print 'C'
-    movi    r8, 0x43
-    syscall 0
-    ; 20秒Sleepして自己ループ
-    movi    r8, 20
-    calli   sleep
-    jpi     print_t3_message
-
 os_start:
     syscall 10 ; UNIX時刻をr8レジスタにセット
     stdi    r8, [basetime]
     movi    tp, 0
     movi    vt, vector_table
-    ei
+    movi    pt, t0_pt
+    movi    r0, 0xc000
+    muli    r0, 0x10000
+    mov     cr, r0 ; ei + MMU on
     movi    r8, start_message
     syscall 1
 
@@ -413,11 +392,11 @@ task_status:
 _t0_status:
     .byte   runnable
 _t1_status:
-    .byte   runnable
+    .byte   waiting
 _t2_status:
-    .byte   runnable
+    .byte   waiting
 _t3_status:
-    .byte   runnable
+    .byte   waiting
 _t4_status:
     .byte   waiting
 
