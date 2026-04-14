@@ -151,32 +151,18 @@ draw_cmdline:
     syscall 1 ; show r8 pointing char
 
 keyloop:
-    syscall 3 ; get key input (1char)
-
-    ; is pressed any key?
-    sbti    r8, 0 ; is r8 zero?
-    jpzi    keyloop ; if zero, jump to keyloop
-    sbti    r8, 92 ; is Backslash?
+    calli   key_input
+    sbti    r8, 92 ; Ignore '\'
     jpzi    keyloop
-
-    ; is pressed Delete/Backspace key?
-    sbti    r8, 8 ; BS
+    sbti    r8, 8
     jpzi    do_bs
-    sbti    r8, 127 ; DEL
-    jpzi    do_bs
-
-    ; is pressed Enter key?
-    sbti    r8, 10 ; LF
+    sbti    r8, 10
     jpzi    do_enter
-    sbti    r8, 13 ; CR
+    sbti    r8, 13
     jpzi    do_enter
-
-    ; is input length 80?
-    sbti    r0, 80
+    sbti    r0, 80 ; input length
     jpnui   draw_cmdline
-
-    ;
-    stb     r8, [r1] ; store byte
+    stb     r8, [r1]
     inc     r0
     inc     r1
     movi    r8, 0
@@ -576,6 +562,23 @@ sleep:
 _sleep_end:
     ret
 
+    .addr   0xb3000
+key_input:
+    syscall 3
+    sbti    r8, 0
+    jpnzi   _got_key
+_do_yield:
+    movi    r8, _resume_point
+    push    r8
+    push    cr
+    di
+    jpi     _task_switch
+_resume_point:
+    syscall 3
+    sbti    r8, 0
+    jpzi    _do_yield
+_got_key:
+    ret
 
 ; Buffer
     .addr   0xc0000

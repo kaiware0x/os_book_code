@@ -301,7 +301,7 @@ def do_syscall(syscall_num):
 
             # そのVCの入力キューから読み込む
             try:
-                ch = key_queues[vc_idx].get(timeout=0.05)
+                ch = key_queues[vc_idx].get(timeout=0.005)
             except Empty:
                 ch = '\0'
             registers['R8'] = ord(ch) & 0x7F
