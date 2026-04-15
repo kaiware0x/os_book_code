@@ -11,7 +11,7 @@
     .addr   0x80000
 ; Task1 setup
     movi    sp, t1_stack_btm
-    movi    r0, print_t1_message
+    movi    r0, 0
     push    r0 ; pc
     movi    r0, 0x4000
     muli    r0, 0x10000
@@ -33,7 +33,7 @@
     stdi    sp, [_t1_sp]
 ; Task2 setup
     movi    sp, t2_stack_btm
-    movi    r0, print_t2_message
+    movi    r0, 0
     push    r0 ; pc
     movi    r0, 0x4000
     muli    r0, 0x10000
@@ -55,7 +55,7 @@
     stdi    sp, [_t2_sp]
 ; Task3 setup
     movi    sp, t3_stack_btm
-    movi    r0, print_t3_message
+    movi    r0, 0
     push    r0 ; pc
     movi    r0, 0x4000
     muli    r0, 0x10000
@@ -79,7 +79,7 @@
     movi    sp, t4_stack_btm
     movi    r0, idle_loop
     push    r0  ; PC 相当, idle_loop を実行させる
-    movi    r0, 0x4000
+    movi    r0, 0xc000
     muli    r0, 0x10000
     push    r0      ; CR 相当
     movi    r0, 0   ; Dummy data
@@ -94,6 +94,8 @@
     push    r0      ; r8
     push    r0      ; r9
     push    r0      ; PT
+    movi    r0, t0_pt
+    push    r0      ; PageTable
     movi    r0, vector_table
     push    r0      ; VT
     stdi    sp, [_t4_sp]

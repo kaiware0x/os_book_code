@@ -19,7 +19,7 @@
         MOVI    R8, 10
         SYSCALL 0
 ; 終了
-        HALT
+        ret
 
 ; 書式指定用文字列
 fmt_str1:

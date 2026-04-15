@@ -121,7 +121,7 @@ result_normal:
 end:
         MOVI    R8, 10
         SYSCALL 0
-        HALT
+        ret
 
 format_str1:
         .STRING "#01"
