@@ -246,7 +246,7 @@ do_taskexec:
     ldb     r1, [r0]
     sbti    r1, not_in_use
     jpzi    _tid_found
-    inc     r0;
+    inc     r0
     inc     r2
     ldb     r1, [r0]
     sbti    r1, not_in_use
@@ -416,11 +416,67 @@ int_other:
     iret
 
 int_pagefault:
-    movi    r8, pagefault_msg
+    push    r0
+    push    r1
+    push    r2
+    push    r2
+    push    r2
+    push    r8
+
+    mov     r0, sp
+    addi    r0, 28 ; sp->pcレジスタまで移動
+    ldd     r1, [r0] ; pcレジスタが指すアドレスを取得
+    syscall 41 ; page fault 発生の論理アドレスを取得
+    sbt     r1, r8 ; *pc == faultaddr?
+    jpzi    _fetch_induced ; trueならfetchによるfault
+    subi    r1, 4 ; falseなら1命令戻って...
+    std     r1, [r0] ; pcに格納
+_fetch_induced:
+    divi    r8, 0x10000 ; ページ番号を計算
+    movi    r0, 0
+    movi    r1, t0_pt ; 0xfff00
+    movi    r2, 0
+    ; [in] r0: Page内アドレスカウンタ
+    ; [in] r1: PageTableアドレス
+    ; [in] r2: Page番号カウンタ
+_find_pp_loop: ; pp = Physical Page
+    mov     r3, r1
+    add     r3, r0 ; r3: Page内アドレス
+    ldb     r4, [r3] ; r4: val in page table
+    sbt     r4, r2
+    jpzi    _next_pp ; if already alloced, go next pp
+    inc     r0
+    sbti    r0, 0x40
+    jpzi    _pp_found
+    jpi     _find_pp_loop
+_next_pp:
+    movi    r0, 0
+    inc     r2
+    sbti    r2, 0x10 ; 10個すべてのPageを走査したか？
+    jpzi    _pp_full_error
+    jpi     _find_pp_loop
+_pp_found:
+    ldbi    r0, [current_task]
+    muli    r0, 0x10
+    addi    r0, t0_pt
+    add     r0, r8
+    stb     r2, [r0]
+
+    pop     r8
+    pop     r4
+    pop     r3
+    pop     r2
+    pop     r1
+    pop     r0
+    iret
+
+_pp_full_error:
+    movi    r8, pp_full_msg
     syscall 1
     halt
-pagefault_msg:
-    .string "Page Fault has occured.\n"
+pp_full_msg:
+    .string "Can't allocate physical page.\n"
+
 
 ; DATA
 start_message:
