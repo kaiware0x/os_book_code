@@ -1,19 +1,25 @@
-    .def    runnable        0
-    .def    waiting         1
-    .def    timeslice       50 ; 0.1s x 50 で最大5s実行可能
+    .def    runnable        0 ; status
+    .def    waiting         1 ; status
+    .def    not_in_use      2 ; status
+    .def    timeslice       5 ; 0.1s x 5
     .def    t0_stack_btm    0xff000
     .def    t1_stack_btm    0xf0000
     .def    t2_stack_btm    0xe8000
     .def    t3_stack_btm    0xe0000
     .def    t4_stack_btm    0xd8000
     .def    t0_pt           0xfff00 ; Task0用 PageTable アドレス
+    .def    t1_pt           0xfff10
+    .def    t2_pt           0xfff20
+    .def    t3_pt           0xfff30
 
     .addr   0x80000
 ; Task1 setup
     movi    sp, t1_stack_btm
+    movi    r0, task_exit
+    push    r0
     movi    r0, 0
     push    r0 ; pc
-    movi    r0, 0x4000
+    movi    r0, 0xc000
     muli    r0, 0x10000
     push    r0 ; cr
     movi    r0, 0 ; dummy data
@@ -27,15 +33,18 @@
     push    r0 ; r7
     push    r0 ; r8
     push    r0 ; r9
+    movi    r0, t1_pt
     push    r0 ; pt
     movi    r0, vector_table
     push    r0 ; vt
     stdi    sp, [_t1_sp]
 ; Task2 setup
     movi    sp, t2_stack_btm
+    movi    r0, task_exit
+    push    r0
     movi    r0, 0
     push    r0 ; pc
-    movi    r0, 0x4000
+    movi    r0, 0xc000
     muli    r0, 0x10000
     push    r0 ; cr
     movi    r0, 0 ; dummy data
@@ -49,15 +58,18 @@
     push    r0 ; r7
     push    r0 ; r8
     push    r0 ; r9
+    movi    r0, t2_pt
     push    r0 ; pt
     movi    r0, vector_table
     push    r0 ; vt
     stdi    sp, [_t2_sp]
 ; Task3 setup
     movi    sp, t3_stack_btm
+    movi    r0, task_exit
+    push    r0
     movi    r0, 0
     push    r0 ; pc
-    movi    r0, 0x4000
+    movi    r0, 0xc000
     muli    r0, 0x10000
     push    r0 ; cr
     movi    r0, 0 ; dummy data
@@ -71,6 +83,7 @@
     push    r0 ; r7
     push    r0 ; r8
     push    r0 ; r9
+    movi    r0, t3_pt
     push    r0 ; pt
     movi    r0, vector_table
     push    r0 ; vt
@@ -191,6 +204,10 @@ do_enter:
     movi    r9, cmd_date
     calli   cmp_str
     jpzi    do_date
+    ; taskexec
+    movi    r9, cmd_taskexec
+    calli   cmp_str
+    jpzi    do_taskexec
     ;
     movi    r8, cmd_error1
     syscall 1
@@ -215,6 +232,44 @@ do_exec:
     movi    r9, keybuffer ; 対象文字列
     calli   get_nth_token
     syscall 22 ; dirフォルダ内のバイナリを実行
+    jpi     cmdloop
+do_taskexec:
+    movi    r8, 2
+    movi    r9, keybuffer
+    calli   get_nth_token
+    mov     r9, r8 ; r9にTask文字列が渡される
+    push    r0
+    push    r1
+    push    r2
+    movi    r0, task_status + 1
+    movi    r2, 1
+    ldb     r1, [r0]
+    sbti    r1, not_in_use
+    jpzi    _tid_found
+    inc     r0;
+    inc     r2
+    ldb     r1, [r0]
+    sbti    r1, not_in_use
+    jpzi    _tid_found
+    inc     r0
+    inc     r2
+    ldb     r1, [r0]
+    sbti    r1, not_in_use
+    jpzi    _tid_found
+    movi    r8, error_tid_msg
+    syscall 1
+    pop     r2
+    pop     r1
+    pop     r0
+    jpi     cmdloop
+_tid_found:
+    mov     r8, r2
+    syscall 23
+    movi    r1, runnable
+    stb     r1, [r0]
+    pop     r2
+    pop     r1
+    pop     r0
     jpi     cmdloop
 do_date:
     lddi    r8, [basetime] ; r8にOS起動時点のUNIXタイムをセット
@@ -360,6 +415,13 @@ _int_timer_end:
 int_other:
     iret
 
+int_pagefault:
+    movi    r8, pagefault_msg
+    syscall 1
+    halt
+pagefault_msg:
+    .string "Page Fault has occured.\n"
+
 ; DATA
 start_message:
     .string "welcome to simple OS!\n"
@@ -373,6 +435,10 @@ cmd_ls:
     .string "ls"
 cmd_exec:
     .string "exec"
+cmd_taskexec:
+    .string "taskexec"
+error_tid_msg:
+    .string "Could not assign tid.\n"
 cmd_date:
     .string "date"
 cmd_error1:
@@ -394,11 +460,11 @@ task_status:
 _t0_status:
     .byte   runnable
 _t1_status:
-    .byte   waiting
+    .byte   not_in_use
 _t2_status:
-    .byte   waiting
+    .byte   not_in_use
 _t3_status:
-    .byte   waiting
+    .byte   not_in_use
 _t4_status:
     .byte   waiting
 
@@ -456,6 +522,9 @@ _cmp_str_end:
     ret
 
     .addr   0xb1000
+; [in] r9: 入力文字列先頭ポインタ
+; [in] r8: nth integer
+; [out] r8: nth token 文字列先頭ポインタ
 get_nth_token:
     push    r0
     push    r1
@@ -561,6 +630,56 @@ _resume_point:
 _got_key:
     ret
 
+
+    .addr   0xb4000
+task_exit:
+    push    r0
+    push    r1
+    push    r2
+    ldbi    r0, [current_task]
+    sbti    r0, 0
+    jpzi    _task_exit_end_t0t4
+    sbti    r0, 4
+    jpzi    _task_exit_end_t0t4
+    movi    r2, task_status
+    add     r2, r0
+    movi    r1, not_in_use
+    stb     r1, [r2]
+_check1:
+    sbti    r0, 1
+    jpnzi   _check2
+_exit1:
+    movi    r1, t1_stack_btm
+    stdi    r1, [_t1_sp]
+    jpi     _task_exit_end
+_check2:
+    sbti    r0, 2
+    jpnzi   _exit3
+_exit2:
+    movi    r1, t2_stack_btm
+    stdi    r1, [_t2_sp]
+    jpi     _task_exit_end
+_exit3:
+    movi    r1, t3_stack_btm
+    stdi    r1, [_t3_sp]
+_task_exit_end:
+    pop     r2
+    pop     r1
+    pop     r0
+    movi    r2, task_exit
+    push    r2
+    movi    r2, 0
+    push    r2
+    push    cr
+    jpi     _task_switch
+_task_exit_end_t0t4:
+    pop     r2
+    pop     r1
+    pop     r0
+    ret
+
+
+
 ; Buffer
     .addr   0xc0000
 keybuffer:
@@ -576,4 +695,4 @@ vector_table:
     .dword  int_timer
     .dword  int_other
     .dword  int_other
-    .dword  int_other
+    .dword  int_pagefault
